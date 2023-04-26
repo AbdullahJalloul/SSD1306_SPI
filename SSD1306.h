@@ -71,8 +71,8 @@ class SSD1306 {
 public:
   SSD1306(int8_t mosi_pin, int8_t sclk_pin, int8_t dc_pin, int8_t rst_pin, int8_t cs_pin);
   void init();
-  void updateScreen();
-  void clearScreen(SSD1306_COLOR color);
+  void display();
+  void clear(SSD1306_COLOR color = SSD1306_BLACK);
 
   // Low-level procedures
   void reset();
@@ -96,7 +96,10 @@ public:
   void fillCircle(int16_t x0, int16_t y0, int16_t r, SSD1306_COLOR color);
   void drawCircleHelper(int16_t x0, int16_t y0, int16_t r, uint8_t cornername, SSD1306_COLOR color);
   void fillCircleHelper(int16_t x0, int16_t y0, int16_t r, uint8_t corners, int16_t delta, SSD1306_COLOR color);
-
+  void drawTriangle(int16_t x0, int16_t y0, int16_t x1, int16_t y1, int16_t x2, int16_t y2, SSD1306_COLOR color);
+  void fillTriangle(int16_t x0, int16_t y0, int16_t x1, int16_t y1, int16_t x2, int16_t y2, SSD1306_COLOR color);
+  void drawLine(int16_t x0, int16_t y0, int16_t x1, int16_t y1, SSD1306_COLOR color);
+  void writeLine(int16_t x0, int16_t y0, int16_t x1, int16_t y1, SSD1306_COLOR color);
 
 private:
   uint16_t CurrentX;

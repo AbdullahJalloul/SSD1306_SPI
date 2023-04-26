@@ -4,8 +4,8 @@
 #include <SPI.h>
 
 
-#ifndef swap
-#define swap(a, b) \
+#ifndef swap16
+#define swap16(a, b) \
   { \
     int16_t t = a; \
     a = b; \
@@ -62,11 +62,11 @@ void SSD1306::init() {
     writeCommand(initData[i]);
 
   // Clear screen
-  clearScreen(SSD1306_BLACK);
+  clear();
   dim(false);
 
   // Flush buffer to screen
-  updateScreen();
+  display();
 
   // Set default values for screen object
   this->CurrentX = 0;
@@ -76,7 +76,7 @@ void SSD1306::init() {
   delay(100);
 }
 
-void SSD1306::updateScreen() {
+void SSD1306::display() {
   uint8_t x = 2;
 
   for (uint8_t i = 0; i < (SSD1306_HEIGHT >> 3); i++) {
@@ -89,7 +89,7 @@ void SSD1306::updateScreen() {
   }
 }
 
-void SSD1306::clearScreen(SSD1306_COLOR color) {
+void SSD1306::clear(SSD1306_COLOR color) {
   uint8_t c = (color == SSD1306_BLACK) ? 0x00 : 0xFF;
   memset(SSD1306_Buffer, c, sizeof(SSD1306_Buffer));
 }
@@ -565,6 +565,148 @@ void SSD1306::fillCircleHelper(int16_t x0, int16_t y0, int16_t r, uint8_t corner
       py = y;
     }
     px = x;
+  }
+}
+
+void SSD1306::drawTriangle(int16_t x0, int16_t y0, int16_t x1, int16_t y1, int16_t x2, int16_t y2, SSD1306_COLOR color) {
+  drawLine(x0, y0, x1, y1, color);
+  drawLine(x1, y1, x2, y2, color);
+  drawLine(x2, y2, x0, y0, color);
+}
+
+void SSD1306::fillTriangle(int16_t x0, int16_t y0, int16_t x1, int16_t y1, int16_t x2, int16_t y2, SSD1306_COLOR color) {
+
+  int16_t a, b, y, last;
+
+  // Sort coordinates by Y order (y2 >= y1 >= y0)
+  if (y0 > y1) {
+    swap16(y0, y1);
+    swap16(x0, x1);
+  }
+  if (y1 > y2) {
+    swap16(y2, y1);
+    swap16(x2, x1);
+  }
+  if (y0 > y1) {
+    swap16(y0, y1);
+    swap16(x0, x1);
+  }
+
+  if (y0 == y2) { // Handle awkward all-on-same-line case as its own thing
+    a = b = x0;
+    if (x1 < a)
+      a = x1;
+    else if (x1 > b)
+      b = x1;
+    if (x2 < a)
+      a = x2;
+    else if (x2 > b)
+      b = x2;
+    drawHLine(a, y0, b - a + 1, color);
+    return;
+  }
+
+  int16_t dx01 = x1 - x0, dy01 = y1 - y0, dx02 = x2 - x0, dy02 = y2 - y0,
+          dx12 = x2 - x1, dy12 = y2 - y1;
+  int32_t sa = 0, sb = 0;
+
+  // For upper part of triangle, find scanline crossings for segments
+  // 0-1 and 0-2.  If y1=y2 (flat-bottomed triangle), the scanline y1
+  // is included here (and second loop will be skipped, avoiding a /0
+  // error there), otherwise scanline y1 is skipped here and handled
+  // in the second loop...which also avoids a /0 error here if y0=y1
+  // (flat-topped triangle).
+  if (y1 == y2)
+    last = y1; // Include y1 scanline
+  else
+    last = y1 - 1; // Skip it
+
+  for (y = y0; y <= last; y++) {
+    a = x0 + sa / dy01;
+    b = x0 + sb / dy02;
+    sa += dx01;
+    sb += dx02;
+    /* longhand:
+    a = x0 + (x1 - x0) * (y - y0) / (y1 - y0);
+    b = x0 + (x2 - x0) * (y - y0) / (y2 - y0);
+    */
+    if (a > b)
+      swap16(a, b);
+    drawHLine(a, y, b - a + 1, color);
+  }
+
+  // For lower part of triangle, find scanline crossings for segments
+  // 0-2 and 1-2.  This loop is skipped if y1=y2.
+  sa = (int32_t)dx12 * (y - y1);
+  sb = (int32_t)dx02 * (y - y0);
+  for (; y <= y2; y++) {
+    a = x1 + sa / dy12;
+    b = x0 + sb / dy02;
+    sa += dx12;
+    sb += dx02;
+    /* longhand:
+    a = x1 + (x2 - x1) * (y - y1) / (y2 - y1);
+    b = x0 + (x2 - x0) * (y - y0) / (y2 - y0);
+    */
+    if (a > b)
+      swap16(a, b);
+    drawHLine(a, y, b - a + 1, color);
+  }
+
+}
+
+void SSD1306::drawLine(int16_t x0, int16_t y0, int16_t x1, int16_t y1, SSD1306_COLOR color) {
+  // Update in subclasses if desired!
+  if (x0 == x1) {
+    if (y0 > y1)
+      swap16(y0, y1);
+    drawVLine(x0, y0, y1 - y0 + 1, color);
+  } else if (y0 == y1) {
+    if (x0 > x1)
+      swap16(x0, x1);
+    drawHLine(x0, y0, x1 - x0 + 1, color);
+  } else {
+    writeLine(x0, y0, x1, y1, color);
+  }
+}
+
+void SSD1306::writeLine(int16_t x0, int16_t y0, int16_t x1, int16_t y1, SSD1306_COLOR color) {
+
+  int16_t steep = abs(y1 - y0) > abs(x1 - x0);
+  if (steep) {
+    swap16(x0, y0);
+    swap16(x1, y1);
+  }
+
+  if (x0 > x1) {
+    swap16(x0, x1);
+    swap16(y0, y1);
+  }
+
+  int16_t dx, dy;
+  dx = x1 - x0;
+  dy = abs(y1 - y0);
+
+  int16_t err = dx / 2;
+  int16_t ystep;
+
+  if (y0 < y1) {
+    ystep = 1;
+  } else {
+    ystep = -1;
+  }
+
+  for (; x0 <= x1; x0++) {
+    if (steep) {
+      drawPixel(y0, x0, color);
+    } else {
+      drawPixel(x0, y0, color);
+    }
+    err -= dy;
+    if (err < 0) {
+      y0 += ystep;
+      err += dx;
+    }
   }
 }
 
